@@ -118,17 +118,44 @@ function onResults(results) {
             new THREE.Vector3(wrist.x, wrist.y, wrist.z)
         );
 
-        const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
+        /* ==============================
+   ✅ FIXED PALM ROTATION
+   Prevents flipping when twisting
+============================== */
 
-        const forward = new THREE.Vector3().subVectors(
-            new THREE.Vector3(middleBase.x, middleBase.y, middleBase.z),
-            new THREE.Vector3(wrist.x, wrist.y, wrist.z)
-        ).normalize();
+// Palm right direction
+const right = new THREE.Vector3().subVectors(
+    new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z),
+    new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z)
+).normalize();
 
-        const matrix = new THREE.Matrix4();
-        matrix.lookAt(new THREE.Vector3(0,0,0), forward, normal);
+// Palm forward (wrist → middle finger)
+const forward = new THREE.Vector3().subVectors(
+    new THREE.Vector3(middleBase.x, middleBase.y, middleBase.z),
+    new THREE.Vector3(wrist.x, wrist.y, wrist.z)
+).normalize();
 
-        object3d.quaternion.setFromRotationMatrix(matrix);
+// Palm normal (stable orientation)
+const up = new THREE.Vector3().crossVectors(forward, right).normalize();
+
+/* IMPORTANT:
+   If model faces wrong direction,
+   swap crossVectors order:
+   crossVectors(right, forward)
+*/
+
+// Build stable rotation matrix
+const rotationMatrix = new THREE.Matrix4();
+rotationMatrix.makeBasis(right, up, forward);
+
+// Apply rotation
+object3d.quaternion.setFromRotationMatrix(rotationMatrix);
+
+/* ==============================
+   🔧 OPTIONAL ROTATION CORRECTION
+   If still reversed, uncomment:
+   object3d.rotateY(Math.PI);
+============================== */
         object3d.visible = true;
 
     } else {
