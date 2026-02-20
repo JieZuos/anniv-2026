@@ -12,7 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: #000; }
         #video { position: absolute; width: 100vw; height: 100vh; object-fit: cover; }
         canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
         #info { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px; }
@@ -22,133 +22,164 @@
     <div id="info">Point rear camera at your palm</div>
     <video id="video" autoplay playsinline></video>
 
-    <script>
-        const video = document.getElementById('video');
-        let scene, camera, renderer, object3d;
+<script>
+const video = document.getElementById('video');
+let scene, camera, renderer, object3d;
+let mixer;
+const clock = new THREE.Clock();
 
-        function initThree() {
-            scene = new THREE.Scene();
+function initThree() {
 
-            camera = new THREE.PerspectiveCamera(
-                75,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000
-            );
+    scene = new THREE.Scene();
 
-            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
+    camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+    );
 
-            // Lighting
-            scene.add(new THREE.AmbientLight(0xffffff, 1));
-            const light = new THREE.DirectionalLight(0xffffff, 1);
-            light.position.set(0, 5, 5);
-            scene.add(light);
+    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-            // Load GLB model
-            const loader = new THREE.GLTFLoader();
-            loader.load(
-                "bouquet.glb",
-                function (gltf) {
-                    object3d = gltf.scene;
+    scene.add(new THREE.AmbientLight(0xffffff, 1));
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(0, 5, 5);
+    scene.add(light);
 
-                    // Adjust scale if needed
-                    object3d.scale.set(0.5, 0.5, 0.5);
+    const loader = new THREE.GLTFLoader();
+    loader.load("bouquet.glb", function(gltf) {
 
-                    object3d.visible = false;
-                    scene.add(object3d);
-                },
-                undefined,
-                function (error) {
-                    console.error("Error loading GLB:", error);
-                }
-            );
+        object3d = gltf.scene;
 
-            camera.position.z = 2;
+        /* ==============================
+           🔧 ADJUST MODEL SIZE HERE
+           Increase values to make bigger
+           Decrease to make smaller
+        ============================== */
+        object3d.scale.set(0.5, 0.5, 0.5);
+
+
+        /* ==============================
+           🔧 ADJUST MODEL ROTATION OFFSET HERE
+           (Use radians)
+           Example: Math.PI / 2 = 90°
+        ============================== */
+        object3d.rotation.x = 0;
+        object3d.rotation.y = 0;
+        object3d.rotation.z = 0;
+
+
+        scene.add(object3d);
+        object3d.visible = false;
+
+        /* ==============================
+           🎬 PLAY ANIMATION
+        ============================== */
+        if (gltf.animations && gltf.animations.length > 0) {
+            mixer = new THREE.AnimationMixer(object3d);
+            gltf.animations.forEach((clip) => {
+                mixer.clipAction(clip).play();
+            });
         }
 
-        function onResults(results) {
-            if (!object3d) return;
+    });
 
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
+    camera.position.z = 2;
+}
 
-                const wrist = landmarks[0];
-                const indexBase = landmarks[5];
-                const pinkyBase = landmarks[17];
-                const middleBase = landmarks[9];
+function onResults(results) {
+    if (!object3d) return;
 
-                // Position (center of palm)
-                const posX = (wrist.x + indexBase.x + pinkyBase.x) / 3;
-                const posY = (wrist.y + indexBase.y + pinkyBase.y) / 3;
-                const posZ = (wrist.z + indexBase.z + pinkyBase.z) / 3;
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
 
-                object3d.position.x = (posX - 0.5) * 4;
-                object3d.position.y = -(posY - 0.5) * 3;
-                object3d.position.z = -posZ * 10;
+        const landmarks = results.multiHandLandmarks[0];
+        const wrist = landmarks[0];
+        const indexBase = landmarks[5];
+        const pinkyBase = landmarks[17];
+        const middleBase = landmarks[9];
 
-                // Rotation alignment
-                const v1 = new THREE.Vector3().subVectors(
-                    new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z),
-                    new THREE.Vector3(wrist.x, wrist.y, wrist.z)
-                );
+        const posX = (wrist.x + indexBase.x + pinkyBase.x) / 3;
+        const posY = (wrist.y + indexBase.y + pinkyBase.y) / 3;
+        const posZ = (wrist.z + indexBase.z + pinkyBase.z) / 3;
 
-                const v2 = new THREE.Vector3().subVectors(
-                    new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z),
-                    new THREE.Vector3(wrist.x, wrist.y, wrist.z)
-                );
+        object3d.position.x = (posX - 0.5) * 4;
+        object3d.position.y = -(posY - 0.5) * 3;
+        object3d.position.z = -posZ * 10;
 
-                const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
+        const v1 = new THREE.Vector3().subVectors(
+            new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z),
+            new THREE.Vector3(wrist.x, wrist.y, wrist.z)
+        );
 
-                const forward = new THREE.Vector3().subVectors(
-                    new THREE.Vector3(middleBase.x, middleBase.y, middleBase.z),
-                    new THREE.Vector3(wrist.x, wrist.y, wrist.z)
-                ).normalize();
+        const v2 = new THREE.Vector3().subVectors(
+            new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z),
+            new THREE.Vector3(wrist.x, wrist.y, wrist.z)
+        );
 
-                const matrix = new THREE.Matrix4();
-                matrix.lookAt(new THREE.Vector3(0,0,0), forward, normal);
+        const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
 
-                object3d.quaternion.setFromRotationMatrix(matrix);
-                object3d.visible = true;
+        const forward = new THREE.Vector3().subVectors(
+            new THREE.Vector3(middleBase.x, middleBase.y, middleBase.z),
+            new THREE.Vector3(wrist.x, wrist.y, wrist.z)
+        ).normalize();
 
-            } else {
-                object3d.visible = false;
-            }
+        const matrix = new THREE.Matrix4();
+        matrix.lookAt(new THREE.Vector3(0,0,0), forward, normal);
 
-            renderer.render(scene, camera);
-        }
+        object3d.quaternion.setFromRotationMatrix(matrix);
+        object3d.visible = true;
 
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
+    } else {
+        object3d.visible = false;
+    }
+}
 
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
+/* ==============================
+   🔄 RENDER LOOP (needed for animation)
+============================== */
+function animate() {
+    requestAnimationFrame(animate);
 
-        hands.onResults(onResults);
+    if (mixer) {
+        mixer.update(clock.getDelta());
+    }
 
-        const cam = new Camera(video, {
-            onFrame: async () => {
-                await hands.send({ image: video });
-            },
-            facingMode: 'environment',
-            width: 1280,
-            height: 720
-        });
+    renderer.render(scene, camera);
+}
 
-        initThree();
-        cam.start();
+const hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    </script>
+hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+});
+
+hands.onResults(onResults);
+
+const cam = new Camera(video, {
+    onFrame: async () => {
+        await hands.send({ image: video });
+    },
+    facingMode: 'environment',
+    width: 1280,
+    height: 720
+});
+
+initThree();
+animate();
+cam.start();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
 </body>
 </html>
