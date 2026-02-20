@@ -5,13 +5,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         #video { position: absolute; width: 100vw; height: 100vh; object-fit: cover; }
-        canvas { position: absolute; top: 0; left: 0; }
+        canvas { position: absolute; top: 0; left: 0; z-index: 10; }
     </style>
 </head>
 <body>
@@ -27,21 +25,17 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // 1. Lighting (Essential for GLB models to look good)
-            const light = new THREE.DirectionalLight(0xffffff, 1.5);
-            light.position.set(0, 1, 1).normalize();
-            scene.add(light);
-            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(0, 1, 2);
+            scene.add(directionalLight);
 
-            // 2. Load the Bouquet from the same folder
-            const loader = new THREE.THREE.GLTFLoader(); // Note the THREE. prefix for global scope
+            // CORRECTED LOADER CALL
+            const loader = new THREE.GLTFLoader(); 
             loader.load('bouquet.glb', (gltf) => {
                 bouquet = gltf.scene;
-                bouquet.scale.set(0.2, 0.2, 0.2); // Adjust this based on model size
+                bouquet.scale.set(0.5, 0.5, 0.5); // Adjust if model is too big/small
                 scene.add(bouquet);
-                console.log("Model Loaded!");
-            }, undefined, (error) => {
-                console.error("Error loading model:", error);
             });
 
             camera.position.z = 2;
@@ -50,23 +44,23 @@
         function onResults(results) {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0 && bouquet) {
                 const landmarks = results.multiHandLandmarks[0];
-
-                // Landmark 9 is the middle finger base (center of palm)
-                const center = landmarks[9];
+                
+                // Track the middle finger base for palm placement
+                const palm = landmarks[9];
                 const wrist = landmarks[0];
-                const indexBase = landmarks[5];
-                const pinkyBase = landmarks[17];
+                const index = landmarks[5];
+                const pinky = landmarks[17];
 
-                // Update Position
-                bouquet.position.x = (center.x - 0.5) * 4; 
-                bouquet.position.y = -(center.y - 0.5) * 3;
-                bouquet.position.z = -center.z * 10;
+                // Map coordinates to 3D space
+                bouquet.position.x = (palm.x - 0.5) * 4;
+                bouquet.position.y = -(palm.y - 0.5) * 3;
+                bouquet.position.z = -palm.z * 10;
 
-                // Update Rotation (Orientation)
-                const v1 = new THREE.Vector3().subVectors(indexBase, wrist);
-                const v2 = new THREE.Vector3().subVectors(pinkyBase, wrist);
+                // Rotation calculation
+                const v1 = new THREE.Vector3().subVectors(index, wrist);
+                const v2 = new THREE.Vector3().subVectors(pinky, wrist);
                 const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
-                const forward = new THREE.Vector3().subVectors(center, wrist).normalize();
+                const forward = new THREE.Vector3().subVectors(palm, wrist).normalize();
 
                 const matrix = new THREE.Matrix4();
                 matrix.lookAt(new THREE.Vector3(0,0,0), forward, normal);
@@ -79,14 +73,13 @@
             renderer.render(scene, camera);
         }
 
-        // Setup MediaPipe
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
         hands.onResults(onResults);
 
         const cam = new Camera(video, {
             onFrame: async () => { await hands.send({image: video}); },
-            facingMode: 'environment', // Rear Camera
+            facingMode: 'environment', // Rear camera
             width: 1280, height: 720
         });
 
