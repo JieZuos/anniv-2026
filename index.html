@@ -2,12 +2,17 @@
 <html>
 <head>
     <title>Palm Tracker 3D - Rear Cam</title>
+
+    <!-- MediaPipe -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+    <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
-        /* Removed scaleX(-1) because rear camera shouldn't be mirrored */
         #video { position: absolute; width: 100vw; height: 100vh; object-fit: cover; }
         canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
         #info { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px; }
@@ -16,60 +21,86 @@
 <body>
     <div id="info">Point rear camera at your palm</div>
     <video id="video" autoplay playsinline></video>
+
     <script>
         const video = document.getElementById('video');
         let scene, camera, renderer, object3d;
 
         function initThree() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            camera = new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+
             renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // Create a more interesting object: a ring-like torus
-            const geometry = new THREE.TorusKnotGeometry(0.1, 0.03, 100, 16);
-            const material = new THREE.MeshNormalMaterial();
-            object3d = new THREE.Mesh(geometry, material);
-            scene.add(object3d);
-
+            // Lighting
             scene.add(new THREE.AmbientLight(0xffffff, 1));
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(0, 5, 5);
+            scene.add(light);
+
+            // Load GLB model
+            const loader = new THREE.GLTFLoader();
+            loader.load(
+                "bouquet.glb",
+                function (gltf) {
+                    object3d = gltf.scene;
+
+                    // Adjust scale if needed
+                    object3d.scale.set(0.5, 0.5, 0.5);
+
+                    object3d.visible = false;
+                    scene.add(object3d);
+                },
+                undefined,
+                function (error) {
+                    console.error("Error loading GLB:", error);
+                }
+            );
+
             camera.position.z = 2;
         }
 
         function onResults(results) {
+            if (!object3d) return;
+
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Core landmarks for palm orientation
                 const wrist = landmarks[0];
                 const indexBase = landmarks[5];
                 const pinkyBase = landmarks[17];
                 const middleBase = landmarks[9];
 
-                // 1. Position (Center of Palm)
-                // Note: We don't flip X here because mirroring is off
+                // Position (center of palm)
                 const posX = (wrist.x + indexBase.x + pinkyBase.x) / 3;
                 const posY = (wrist.y + indexBase.y + pinkyBase.y) / 3;
                 const posZ = (wrist.z + indexBase.z + pinkyBase.z) / 3;
 
-                object3d.position.x = (posX - 0.5) * 4; 
+                object3d.position.x = (posX - 0.5) * 4;
                 object3d.position.y = -(posY - 0.5) * 3;
-                object3d.position.z = -posZ * 10; // Z is deeper in rear cam
+                object3d.position.z = -posZ * 10;
 
-                // 2. Rotation (Alignment)
+                // Rotation alignment
                 const v1 = new THREE.Vector3().subVectors(
                     new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z),
                     new THREE.Vector3(wrist.x, wrist.y, wrist.z)
                 );
+
                 const v2 = new THREE.Vector3().subVectors(
                     new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z),
                     new THREE.Vector3(wrist.x, wrist.y, wrist.z)
                 );
-                
-                // Calculate Normal (Palm facing direction)
+
                 const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
-                // Calculate Forward (Wrist to Middle Finger)
+
                 const forward = new THREE.Vector3().subVectors(
                     new THREE.Vector3(middleBase.x, middleBase.y, middleBase.z),
                     new THREE.Vector3(wrist.x, wrist.y, wrist.z)
@@ -77,30 +108,35 @@
 
                 const matrix = new THREE.Matrix4();
                 matrix.lookAt(new THREE.Vector3(0,0,0), forward, normal);
+
                 object3d.quaternion.setFromRotationMatrix(matrix);
-                
                 object3d.visible = true;
+
             } else {
                 object3d.visible = false;
             }
+
             renderer.render(scene, camera);
         }
 
-        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
         });
+
         hands.onResults(onResults);
 
-        // REAR CAMERA CONFIGURATION
         const cam = new Camera(video, {
             onFrame: async () => {
-                await hands.send({image: video});
+                await hands.send({ image: video });
             },
-            facingMode: 'environment', // This forces the back camera
+            facingMode: 'environment',
             width: 1280,
             height: 720
         });
